@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Ethers v6 CDN -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"
+      type="application/javascript"
+    ></script>
+    <script type="module">
+      import { CommentManagerABI } from "https://cdn.jsdelivr.net/npm/@ecp.eth/sdk@0.0.22/dist/esm/abis.js";
+      window.CommentManagerABI = CommentManagerABI; // Attach to window for use in other scripts
+    </script>
+    <script>
+      // Check if ethers is loaded
+      if (typeof ethers === "undefined") {
+        console.error("Ethers.js failed to load from CDN.");
+      }
+    </script>
+    <!-- Tailwind CSS CDN with Typography plugin enabled -->
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {},
+        },
+      };
+    </script>
+    <!-- Markdown and sanitizer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+  </head>
+  <body class="min-h-screen flex items-center justify-center py-8">
+    <div>
+      <div id="urlSection" class="mb-8 max-w-xl">
+        <div class="mb-3 text-sm">
+          Comment IDs are 32-byte hex strings (66 characters including 0x
+          prefix). You can find valid comment IDs from ECP protocol
+          transactions, reading from the contracts or existing comments.
+        </div>
+        <div class="flex flex-col gap-3">
+          <input
+            type="text"
+            id="commentIdInput"
+            class="border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            placeholder="Enter comment ID (e.g., 0x1234...abcd)"
+          />
+          <button
+            id="loadButton"
+            class="bg-blue-600 text-white rounded px-4 py-2 font-semibold hover:bg-blue-700 transition"
+          >
+            Get Comment as Markdown post
+          </button>
+          <div class="flex gap-2 mt-2">
+            <button
+              id="testButton"
+              class="bg-gray-200 text-gray-700 rounded px-3 py-1 text-sm hover:bg-gray-300"
+            >
+              Test with Sample Comment
+            </button>
+          </div>
+        </div>
+      </div>
+      <div
+        id="loading"
+        class="text-center text-gray-600 mb-4"
+        style="display: none"
+      >
+        <div class="flex justify-center items-center">
+          <svg
+            class="animate-spin h-6 w-6 text-blue-600 mr-2"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+            ></path>
+          </svg>
+        </div>
+      </div>
+      <div
+        id="error"
+        class="text-center bg-red-100 text-red-700 rounded p-3 mb-4"
+        style="display: none"
+      ></div>
+      <div id="commentData"></div>
+
+      <script>
+        (function Z(X) {
+          window.addEventListener("message", (J) => {
+            if (J.origin !== X || J.data.type !== "@ecp.eth/sdk/embed/resize")
+              return;
+            const j = document.querySelector("iframe[title=Comments]");
+            j && (j.style.height = J.data.height + "px");
+          });
+        })("https://embed.ethcomments.xyz");
+      </script>
+    </div>
+    <script>
+      // Contract configuration
+      const CONTRACT_ADDRESS = "0xb262C9278fBcac384Ef59Fc49E24d800152E19b1";
+      const CHAIN_ID = "8453"; // Base
+      const RPC_URL = "https://mainnet.base.org";
+      // Contract ABI for getComment function
+
+      // DOM elements
+      const commentIdInput = document.getElementById("commentIdInput");
+      const loadButton = document.getElementById("loadButton");
+      const testButton = document.getElementById("testButton");
+      const loading = document.getElementById("loading");
+      const error = document.getElementById("error");
+      const commentData = document.getElementById("commentData");
+      const urlSection = document.getElementById("urlSection");
+      // Test comment ID
+      const TEST_COMMENT_ID =
+        "0x4e736e72ecfdf9e478148037ce74353a0d3b42ed482fcb58c79b4f80928165ae";
+      // Initialize ethers provider
+      let provider;
+      async function initializeProvider() {
+        try {
+          if (typeof ethers === "undefined") {
+            showError(
+              "Ethers.js library is not loaded. Please refresh the page and try again."
+            );
+            return false;
+          }
+          provider = new ethers.JsonRpcProvider(RPC_URL);
+          return true;
+        } catch (err) {
+          showError("Failed to initialize provider: " + err.message);
+          return false;
+        }
+      }
+      function showError(message) {
+        error.textContent = message;
+        error.style.display = "block";
+        loading.style.display = "none";
+      }
+      function hideError() {
+        error.style.display = "none";
+      }
+      function showLoading() {
+        loading.style.display = "block";
+        hideError();
+        commentData.innerHTML = "";
+      }
+      function hideLoading() {
+        loading.style.display = "none";
+      }
+      function formatAddress(address) {
+        return address.slice(0, 6) + "..." + address.slice(-4);
+      }
+      function formatTimestamp(timestamp) {
+        // Accepts seconds or BigInt string
+        const now = Date.now();
+        const ts = Number(timestamp) * 1000;
+        const diff = Math.floor((now - ts) / 1000); // in seconds
+        if (isNaN(diff)) return "Invalid date";
+        if (diff < 60) {
+          const s = diff;
+          return `${s} second${s === 1 ? "" : "s"} ago`;
+        }
+        if (diff < 3600) {
+          const m = Math.floor(diff / 60);
+          return `${m} minute${m === 1 ? "" : "s"} ago`;
+        }
+        if (diff < 86400) {
+          const h = Math.floor(diff / 3600);
+          return `${h} hour${h === 1 ? "" : "s"} ago`;
+        }
+        if (diff < 2592000) {
+          const d = Math.floor(diff / 86400);
+          return `${d} day${d === 1 ? "" : "s"} ago`;
+        }
+        const date = new Date(ts);
+        return date.toLocaleDateString();
+      }
+
+      function generateTitle(content) {
+        if (!content || content.trim() === "") {
+          return "ECP Comment Viewer";
+        }
+
+        // Try to extract the first H1 header
+        const h1Match = content.match(/^#\s+(.+)$/m);
+        if (h1Match && h1Match[1].trim()) {
+          return h1Match[1].trim();
+        }
+
+        // Remove markdown formatting
+        let plainText = content
+          .replace(/^#+\s+/gm, "") // Remove markdown headers
+          .replace(/\*\*(.*?)\*\*/g, "$1") // Remove bold
+          .replace(/\*(.*?)\*/g, "$1") // Remove italic
+          .replace(/`(.*?)`/g, "$1") // Remove inline code
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Remove links, keep text
+          .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1") // Remove images, keep alt text
+          .replace(/```[\s\S]*?```/g, "") // Remove code blocks
+          .replace(/^\s*[-*+]\s+/gm, "") // Remove list markers
+          .replace(/^\s*\d+\.\s+/gm, "") // Remove numbered list markers
+          .replace(/\n+/g, " ") // Replace newlines with spaces
+          .replace(/\s+/g, " ") // Normalize whitespace
+          .trim();
+
+        // Take first 60 characters or first sentence, whichever is shorter
+        let title = plainText;
+        const firstSentence = plainText.match(/^[^.!?]+[.!?]/);
+        if (firstSentence && firstSentence[0].length <= 60) {
+          title = firstSentence[0];
+        } else {
+          title = plainText.substring(0, 60);
+          if (title.length === 60) {
+            title += "...";
+          }
+        }
+
+        return title || "ECP Comment Viewer";
+      }
+      function displayComment(comment, commentId) {
+        // Generate title from comment content
+        const title = generateTitle(comment.content);
+        document.title = title;
+
+        // Render markdown safely
+        let contentHtml = "<em>No content</em>";
+        if (comment.content) {
+          const rawHtml = marked.parse(comment.content);
+          contentHtml = DOMPurify.sanitize(rawHtml);
+        }
+        const commentHtml = `
+          <article class="p-6 max-w-3xl">
+            <header class="mb-4">
+              <div class="flex items-center gap-2">
+                <a href="https://basescan.org/address/${
+                  comment.author
+                }" target="_blank" rel="noopener noreferrer" class="font-mono bg-gray-200 rounded px-2 py-1 text-xs text-blue-600 underline hover:text-blue-800">${formatAddress(
+          comment.author
+        )}</a>
+                <span>${formatTimestamp(comment.createdAt)}</span>
+              </div>
+            </header>
+            <div class="prose prose-blue text-gray-800 mt-1 mb-8 min-h-96">${contentHtml}</div>
+            <hr class="my-8" />
+            <iframe
+        src="https://embed.ethcomments.xyz/by-replies?commentId=${commentId}&amp;config=N4IgLgFgpgtlIC5QGMD2AbVAnAzo06AlgOYRj4gBGAhsgNbFaoCuAdgCaIgDEAZvwJAAaEL2xRGLDl24AGavPnCQtNGzABaKO0KairOjIDMlABwAmXgDZlAByyEY1LAE8ZARgDsXr3YdPXDTEsCSY2TgQeXmpo6OUcKDQOZzdIvgBWXkz0%2BMTUZMDg0KkInh9vT2V2KBwwLGZkMEIAN3g0qF4AFm7Oqpq6hqbWoPFJcJlYmOplGGYwbRGQsek0zyM1teUHVmIZRQVpkUpsaqwZKHSLi%2BVjrFOR5GY8NP2lEUJWWzmJgX5lD6%2BmiKy1KcgAgrIIWCQABfETsZyGJBUWgMMIrMrmdzYozKYHo0GTOIiVRSTTaXQafRIngmCzWPyOFITKbEkD2JmFUYEjwVXwiBJJBGuGTmKxisW5IUpRbFcZpImHEDVWr1RotNo8Do9Xrw-pqoZQWUglmTGZzBb4koyahGW22rYfXZpdidV2um4nKBnNIS8U2I5erAPJ4yd1u3UgAHfNLuLE4-6fObGnlpABiYIzGdhcNE%2BXIyLErDAaeoMEI6FSoBwLlqsC4AHEoIRakIAARghzUdDtgASUHQrSayGo7Zw1FYOA0CQcvFhAsIAC8ahQaAkKDgl5r3CEYMp9FB%2ByQyFx3AA6HK571MYM4ZAhKCsDRNMDoNrVreni%2B7-cfQ-N0gCxAc9zHnEBYFsMAXGne8oEfZ9dDfDdP0ic90h-EQDyPQCv1A3NoGodgD2Q5dcPQ%2BtML-bCT1Qs88JEAAPZ4P1IyJZDPTxyL3SjWH-Y8gPcMCcD3ZFN1YkB2NMTiMJALCAJo4C6MvGFc1QSBvQoLBCMIUM2O-CiQCYNSNFsQidB2DRWiwYduy4WQtlQYzTPYcziA0CBsCXfNbLYnMRBCVVCEaABZagGMcZgYAAYW8v8sAAdUIdhIEQaJ0ASGEgA"
+        style="width: 100%; border: none"
+        title="Comments"
+      ></iframe>
+          </article>
+        `;
+        commentData.innerHTML = commentHtml;
+      }
+      function displayNoComment() {
+        document.title = "ECP Comment Viewer";
+        commentData.innerHTML =
+          '<div class="text-center text-gray-500 py-8">No comment found or comment is deleted</div>';
+      }
+      async function loadCommentFromInput() {
+        const commentId = commentIdInput.value.trim();
+        if (!commentId) {
+          showError("Please enter a comment ID");
+          return;
+        }
+        if (!commentId.startsWith("0x") || commentId.length !== 66) {
+          showError(
+            "Invalid comment ID format. Comment ID should be a 32-byte hex string starting with 0x (66 characters total)"
+          );
+          return;
+        }
+        urlSection.style.display = "none"; // Hide the form
+        const url = new URL(window.location.href);
+        url.searchParams.set("commentId", commentId);
+        url.searchParams.set("chainId", CHAIN_ID);
+        window.history.pushState({}, "", url.toString());
+        await loadComment(commentId);
+      }
+      async function loadComment(commentId) {
+        showLoading();
+        try {
+          if (!provider) {
+            const initialized = await initializeProvider();
+            if (!initialized) return;
+          }
+          // Check if we can connect to the contract
+          try {
+            const code = await provider.getCode(CONTRACT_ADDRESS);
+            if (code === "0x") {
+              showError(
+                "Contract not found at the specified address. Please verify the contract address."
+              );
+              return;
+            }
+            console.log("Contract code found at address:", CONTRACT_ADDRESS);
+          } catch (contractErr) {
+            console.error("Error checking contract:", contractErr);
+          }
+          // Create contract instance
+          const contract = new ethers.Contract(
+            CONTRACT_ADDRESS,
+            window.CommentManagerABI, // Use the imported ABI
+            provider
+          );
+          console.log(
+            "Attempting to call getComment with commentId:",
+            commentId
+          );
+          console.log("Contract address:", CONTRACT_ADDRESS);
+          console.log("Provider network:", await provider.getNetwork());
+          // Log the exact RPC call that will be made
+          const encodedData = contract.interface.encodeFunctionData(
+            "getComment",
+            [commentId]
+          );
+          console.log("Encoded function data:", encodedData);
+          console.log("Expected RPC call params:", {
+            from: "0x0000000000000000000000000000000000000000",
+            data: encodedData,
+            to: CONTRACT_ADDRESS,
+          });
+          // Call getComment function
+          let comment;
+          try {
+            comment = await contract.getComment(commentId);
+          } catch (err) {
+            // ethers v6 throws a ContractFunctionRevertedError for reverts
+            if (err && err.code === "CALL_EXCEPTION") {
+              showError("Comment not found or contract call reverted.");
+            } else {
+              showError("Failed to load comment: " + (err.message || err));
+            }
+            console.error("Contract call error:", err);
+            hideLoading();
+            return;
+          }
+          hideLoading();
+          if (comment.author === ethers.ZeroAddress || comment.isDeleted) {
+            displayNoComment();
+          } else {
+            displayComment(comment, commentId);
+          }
+        } catch (err) {
+          hideLoading();
+          showError("Failed to load comment: " + (err.message || err));
+          console.error("Contract call error:", err);
+        }
+      }
+      // Event listeners
+      loadButton.addEventListener("click", loadCommentFromInput);
+      commentIdInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          loadCommentFromInput();
+        }
+      });
+      testButton.addEventListener("click", () => {
+        commentIdInput.value = TEST_COMMENT_ID;
+        loadCommentFromInput();
+      });
+
+      // Initialize the page when DOM is ready
+      function initializePage() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const commentId = urlParams.get("commentId");
+        if (commentId) {
+          commentIdInput.value = commentId;
+          urlSection.style.display = "none"; // Hide the form if commentId is present
+          loadComment(commentId);
+        }
+      }
+
+      // Use DOMContentLoaded instead of load for better timing
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initializePage);
+      } else {
+        // DOM is already loaded
+        initializePage();
+      }
+    </script>
+  </body>
+</html>
