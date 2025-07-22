@@ -228,10 +228,97 @@
 
         return title || "ECP Comment Viewer";
       }
+
+      function extractFirstImageUrl(content) {
+        if (!content || content.trim() === "") {
+          return null;
+        }
+
+        // Match markdown image syntax: ![alt text](image_url)
+        const imageMatch = content.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+        if (imageMatch && imageMatch[2]) {
+          return imageMatch[2].trim();
+        }
+
+        return null;
+      }
+
+      function getOpenGraphImageUrl(title) {
+        // Encode the title for use in URL
+        const encodedTitle = encodeURIComponent(title);
+        return `https://og-text-image-nextjs.vercel.app/api/og?text=${encodedTitle}`;
+      }
+
+      function updateOpenGraphMeta(title, imageUrl) {
+        // Remove existing Open Graph meta tags
+        const existingTags = document.querySelectorAll('meta[property^="og:"]');
+        existingTags.forEach((tag) => tag.remove());
+
+        // Create and add new Open Graph meta tags
+        const head = document.head;
+
+        // og:title
+        const titleMeta = document.createElement("meta");
+        titleMeta.setAttribute("property", "og:title");
+        titleMeta.setAttribute("content", title);
+        head.appendChild(titleMeta);
+
+        // og:type
+        const typeMeta = document.createElement("meta");
+        typeMeta.setAttribute("property", "og:type");
+        typeMeta.setAttribute("content", "article");
+        head.appendChild(typeMeta);
+
+        // og:url
+        const urlMeta = document.createElement("meta");
+        urlMeta.setAttribute("property", "og:url");
+        urlMeta.setAttribute("content", window.location.href);
+        head.appendChild(urlMeta);
+
+        // og:image (only if we have an image)
+        if (imageUrl) {
+          const imageMeta = document.createElement("meta");
+          imageMeta.setAttribute("property", "og:image");
+          imageMeta.setAttribute("content", imageUrl);
+          head.appendChild(imageMeta);
+
+          // og:image:width and og:image:height (optional, can be added if needed)
+          const imageWidthMeta = document.createElement("meta");
+          imageWidthMeta.setAttribute("property", "og:image:width");
+          imageWidthMeta.setAttribute("content", "1200");
+          head.appendChild(imageWidthMeta);
+
+          const imageHeightMeta = document.createElement("meta");
+          imageHeightMeta.setAttribute("property", "og:image:height");
+          imageHeightMeta.setAttribute("content", "630");
+          head.appendChild(imageHeightMeta);
+        }
+
+        // og:description (use a truncated version of the title for now)
+        const descriptionMeta = document.createElement("meta");
+        descriptionMeta.setAttribute("property", "og:description");
+        descriptionMeta.setAttribute(
+          "content",
+          title.length > 160 ? title.substring(0, 157) + "..." : title
+        );
+        head.appendChild(descriptionMeta);
+      }
+
       function displayComment(comment, commentId) {
         // Generate title from comment content
         const title = generateTitle(comment.content);
         document.title = title;
+
+        // Extract first image URL from markdown content
+        let imageUrl = extractFirstImageUrl(comment.content);
+
+        // If no image found in content, use the Open Graph API with the title
+        if (!imageUrl) {
+          imageUrl = getOpenGraphImageUrl(title);
+        }
+
+        // Update Open Graph meta tags
+        updateOpenGraphMeta(title, imageUrl);
 
         // Render markdown safely
         let contentHtml = "<em>No content</em>";
@@ -264,6 +351,8 @@
       }
       function displayNoComment() {
         document.title = "ECP Comment Viewer";
+        // Reset Open Graph meta tags to default
+        updateOpenGraphMeta("ECP Comment Viewer", null);
         commentData.innerHTML =
           '<div class="text-center text-gray-500 py-8">No comment found or comment is deleted</div>';
       }
