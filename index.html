@@ -98,12 +98,51 @@
       <div id="commentData"></div>
 
       <script>
-        (function Z(X) {
-          window.addEventListener("message", (J) => {
-            if (J.origin !== X || J.data.type !== "@ecp.eth/sdk/embed/resize")
+        (function mandatoryScript(origin) {
+          window.addEventListener("message", (event) => {
+            if (
+              event.data.type !== "rainbowkit-wallet-button-mobile-clicked" ||
+              origin !== event.origin
+            ) {
               return;
-            const j = document.querySelector("iframe[title=Comments]");
-            j && (j.style.height = J.data.height + "px");
+            }
+            const mobileUri = event.data.uri;
+            if (
+              mobileUri.toLowerCase().startsWith("javascript:") ||
+              mobileUri.toLowerCase().startsWith("data:")
+            ) {
+              console.warn(
+                "Blocked potentially dangerous URI scheme:",
+                mobileUri
+              );
+              return;
+            }
+            if (mobileUri.toLowerCase().startsWith("http")) {
+              const link = document.createElement("a");
+              link.href = mobileUri;
+              link.target = "_blank";
+              link.rel = "noreferrer noopener";
+              link.click();
+            } else {
+              window.location.href = mobileUri;
+            }
+          });
+        })("https://embed.ethcomments.xyz");
+        (function heightAdjustmentScript(origin) {
+          window.addEventListener("message", (event) => {
+            if (
+              event.origin !== origin ||
+              event.data.type !== "@ecp.eth/sdk/embed/resize"
+            ) {
+              return;
+            }
+            const embedIframe = document.querySelector(
+              "iframe[title=Comments]"
+            );
+            if (!embedIframe) {
+              return;
+            }
+            embedIframe.style.height = event.data.height + "px";
           });
         })("https://embed.ethcomments.xyz");
       </script>
@@ -341,10 +380,10 @@
             <div class="prose prose-blue text-gray-800 mt-1 mb-8 min-h-96">${contentHtml}</div>
             <hr class="my-8" />
             <iframe
-        src="https://embed.ethcomments.xyz/by-replies?commentId=${commentId}&amp;config=N4IgLgFgpgtlIC5QGMD2AbVAnAzo06AlgOYRj4gBGAhsgNbFaoCuAdgCaIgDEAZvwJAAaEL2xRGLDl24AGavPnCQtNGzABaKO0KairOjIDMlABwAmXgDZlAByyEY1LAE8ZARgDsXr3YdPXDTEsCSY2TgQeXmpo6OUcKDQOZzdIvgBWXkz0%2BMTUZMDg0KkInh9vT2V2KBwwLGZkMEIAN3g0qF4AFm7Oqpq6hqbWoPFJcJlYmOplGGYwbRGQsek0zyM1teUHVmIZRQVpkUpsaqwZKHSLi%2BVjrFOR5GY8NP2lEUJWWzmJgX5lD6%2BmiKy1KcgAgrIIWCQABfETsZyGJBUWgMMIrMrmdzYozKYHo0GTOIiVRSTTaXQafRIngmCzWPyOFITKbEkD2JmFUYEjwVXwiBJJBGuGTmKxisW5IUpRbFcZpImHEDVWr1RotNo8Do9Xrw-pqoZQWUglmTGZzBb4koyahGW22rYfXZpdidV2um4nKBnNIS8U2I5erAPJ4yd1u3UgAHfNLuLE4-6fObGnlpABiYIzGdhcNE%2BXIyLErDAaeoMEI6FSoBwLlqsC4AHEoIRakIAARghzUdDtgASUHQrSayGo7Zw1FYOA0CQcvFhAsIAC8ahQaAkKDgl5r3CEYMp9FB%2ByQyFx3AA6HK571MYM4ZAhKCsDRNMDoNrVreni%2B7-cfQ-N0gCxAc9zHnEBYFsMAXGne8oEfZ9dDfDdP0ic90h-EQDyPQCv1A3NoGodgD2Q5dcPQ%2BtML-bCT1Qs88JEAAPZ4P1IyJZDPTxyL3SjWH-Y8gPcMCcD3ZFN1YkB2NMTiMJALCAJo4C6MvGFc1QSBvQoLBCMIUM2O-CiQCYNSNFsQidB2DRWiwYduy4WQtlQYzTPYcziA0CBsCXfNbLYsCYFQaouCIHDcxCVVCEaABZagGMcZgYAAYW8v8sAAdUIdhIEQAYoBhIA"
-        style="width: 100%; border: none"
-        title="Comments"
-      ></iframe>
+              src="https://embed.ethcomments.xyz/by-replies?commentId=${commentId}&amp;config=N4IgLgFgpgtlIC5QGMD2AbVAnAzo06AlgOYRj4gBGAhsgNbFaoCuAdgCaIgDEAZvwJAAaEL2xRGLDl24AGavPnCQtNGzABaKO0KairOjIDMlABwAmXgDZlAByyEY1LAE8ZARgDsXr3YdPXDTEsCSY2TgQeXmpo6OUcKDQOZzdIvgBWXkz0%2BMTUZMDg0KkInh9vT2V2KBwwLGZkMEIAN3g0qF4AFm7Oqpq6hqbWoPFJcJlYmOplGGYwbRGQsek0zyM1teUHVmIZRQVpkUpsaqwZKHSLi%2BVjrFOR5GY8NP2lEUJWWzmJgX5lD6%2BmiKy1KcgAgrIIWCQABfETsZyGJBUWgMMIrMrmdzYozKYHo0GTOIiVRSTTaXQafRIngmCzWPyOFITKbEkD2JmFUYEjwVXwiBJJBGuGTmKxisW5IUpRbFcZpImHEDVWr1RotNo8Do9Xrw-pqoZQWUglmTGZzBb4koyahGW22rYfXZpdidV2um4nKBnNIS8U2I5erAPJ4yd1u3UgAHfNLuLE4-6fObGnlpABiYIzGdhcNE%2BXIyLErDAaeoMEI6FSoBwLlqsC4AHEoIRakIAARghzUdDtgASUHQrSayGo7Zw1FYOA0CQcvFhAsIAC8ahQaAkKDgl5r3CEYMp9FB%2ByQyFx3AA6HK571MYM4ZAhKCsDRNMDoNrVreni%2B7-cfQ-N0gCxAc9zHnEBYFsMAXGne8oEfZ9dDfDdP0ic90h-EQDyPQCv1A3NoGodgD2Q5dcPQ%2BtML-bCT1Qs88JEAAPZ4P1IyJZDPTxyL3SjWH-Y8gPcMCcD3ZFN1YkB2NMTiMJALCAJo4C6MvGFc1QSBvQoLBCMIUM2O-CiQCYNSNFsQidB2DRWiwYduy4WQtlQYzTPYcziA0CBsCXfNbLYsCYFQaouCIHDcxCVVCEaABZagGMcZgYAAYW8v8sAAdUIdhIEQAYoBhIA"
+              style="width: 100%; border: none"
+              title="Comments"
+            ></iframe>
           </article>
         `;
         commentData.innerHTML = commentHtml;
