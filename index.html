@@ -32,7 +32,7 @@
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
   </head>
   <body class="min-h-screen flex flex-col items-center justify-center py-8">
-    <div class="w-full">
+    <div>
       <div id="urlSection" class="mb-8 max-w-xl">
         <div class="mb-3 text-sm">
           Comment IDs are 32-byte hex strings (66 characters including 0x
@@ -366,7 +366,7 @@
           contentHtml = DOMPurify.sanitize(rawHtml);
         }
         const commentHtml = `
-          <article class="p-6 max-w-3xl">
+          <article class="p-6 max-w-3xl min-w-[480px]">
             <header class="mb-4">
               <div class="flex items-center gap-2">
                 <a href="https://basescan.org/address/${
