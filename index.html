@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ECP Comment Viewer</title>
     <!-- Ethers v6 CDN -->
     <script
       src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"
@@ -175,17 +176,31 @@
             );
             return false;
           }
-          provider = new ethers.JsonRpcProvider(RPC_URL);
+          const url = new URL(window.location.href);
+          const rpcOverride = url.searchParams.get("rpcUrl");
+          const rpcEndpoint = rpcOverride || RPC_URL;
+          provider = new ethers.JsonRpcProvider(rpcEndpoint);
           return true;
         } catch (err) {
           showError("Failed to initialize provider: " + err.message);
           return false;
         }
       }
+      async function ensureAbiReady(timeoutMs = 5000) {
+        const start = Date.now();
+        while (!window.CommentManagerABI) {
+          if (Date.now() - start > timeoutMs) return false;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return true;
+      }
       function showError(message) {
         error.textContent = message;
         error.style.display = "block";
         loading.style.display = "none";
+        if (urlSection) {
+          urlSection.style.display = "block";
+        }
       }
       function hideError() {
         error.style.display = "none";
@@ -202,11 +217,17 @@
         return address.slice(0, 6) + "..." + address.slice(-4);
       }
       function formatTimestamp(timestamp) {
-        // Accepts seconds or BigInt string
-        const now = Date.now();
-        const ts = Number(timestamp) * 1000;
-        const diff = Math.floor((now - ts) / 1000); // in seconds
-        if (isNaN(diff)) return "Invalid date";
+        const nowMs = Date.now();
+        let seconds;
+        if (typeof timestamp === "bigint") {
+          seconds = Number(timestamp);
+        } else {
+          const numeric = Number(timestamp);
+          seconds = numeric > 1e12 ? Math.floor(numeric / 1000) : numeric;
+        }
+        const tsMs = seconds * 1000;
+        const diff = Math.floor((nowMs - tsMs) / 1000); // in seconds
+        if (!isFinite(diff)) return "Invalid date";
         if (diff < 60) {
           const s = diff;
           return `${s} second${s === 1 ? "" : "s"} ago`;
@@ -223,7 +244,7 @@
           const d = Math.floor(diff / 86400);
           return `${d} day${d === 1 ? "" : "s"} ago`;
         }
-        const date = new Date(ts);
+        const date = new Date(tsMs);
         return date.toLocaleDateString();
       }
 
@@ -434,6 +455,12 @@
           } catch (contractErr) {
             console.error("Error checking contract:", contractErr);
           }
+          // Ensure ABI is ready before creating contract instance
+          const abiReady = await ensureAbiReady();
+          if (!abiReady) {
+            showError("Failed to load contract ABI. Please refresh and try again.");
+            return;
+          }
           // Create contract instance
           const contract = new ethers.Contract(
             CONTRACT_ADDRESS,
@@ -473,7 +500,8 @@
             return;
           }
           hideLoading();
-          if (comment.author === ethers.ZeroAddress || comment.isDeleted) {
+          const isDeleted = (comment && (comment.isDeleted !== undefined ? comment.isDeleted : comment.deleted !== undefined ? comment.deleted : false));
+          if (comment.author === ethers.ZeroAddress || isDeleted) {
             displayNoComment();
           } else {
             displayComment(comment, commentId);
@@ -486,7 +514,7 @@
       }
       // Event listeners
       loadButton.addEventListener("click", loadCommentFromInput);
-      commentIdInput.addEventListener("keypress", (e) => {
+      commentIdInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           loadCommentFromInput();
         }
